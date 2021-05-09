@@ -4,6 +4,8 @@ const jsx = require('@vue/babel-plugin-jsx')
 const importMeta = require('@babel/plugin-syntax-import-meta')
 const { createFilter } = require('@rollup/pluginutils')
 const hash = require('hash-sum')
+const path = require('path')
+const { createHash } = require('crypto')
 
 const ssrRegisterHelperId = '/__vue-jsx-ssr-register-helper'
 const ssrRegisterHelperCode =
@@ -39,6 +41,7 @@ function ssrRegisterHelper(comp, filename) {
  * @returns {import('vite').Plugin}
  */
 function vueJsxPlugin(options = {}) {
+  let root = ''
   let needHmr = false
   let needSourceMap = true
 
@@ -63,6 +66,7 @@ function vueJsxPlugin(options = {}) {
     configResolved(config) {
       needHmr = config.command === 'serve' && !config.isProduction
       needSourceMap = config.command === 'serve' || !!config.build.sourcemap
+      root = config.root
     },
 
     resolveId(id) {
@@ -217,9 +221,13 @@ function vueJsxPlugin(options = {}) {
           }
 
           if (ssr) {
+            const normalizedId = path.relative(root, id)
+            const hashedId = createHash('sha256')
+              .update(normalizedId)
+              .digest('hex')
             let ssrInjectCode =
               `\nimport { ssrRegisterHelper } from "${ssrRegisterHelperId}"` +
-              `\nconst __moduleId = ${JSON.stringify(id)}`
+              `\nconst __moduleId = ${JSON.stringify(hashedId)}`
             for (const { local } of hotComponents) {
               ssrInjectCode += `\nssrRegisterHelper(${local}, __moduleId)`
             }
