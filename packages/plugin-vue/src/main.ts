@@ -1,5 +1,6 @@
 import qs from 'querystring'
 import path from 'path'
+import { createHash } from 'crypto'
 import { rewriteDefault, SFCBlock, SFCDescriptor } from '@vue/compiler-sfc'
 import { ResolvedOptions } from '.'
 import {
@@ -143,13 +144,17 @@ export async function transformMain(
 
   // SSR module registration by wrapping user setup
   if (ssr) {
+    const normalizedFilename = path.relative(options.root, filename)
+    const hashedFilename = createHash('sha256')
+      .update(normalizedFilename)
+      .digest('hex')
     output.push(
       `import { useSSRContext as __vite_useSSRContext } from 'vue'`,
       `const _sfc_setup = _sfc_main.setup`,
       `_sfc_main.setup = (props, ctx) => {`,
       `  const ssrContext = __vite_useSSRContext()`,
       `  ;(ssrContext.modules || (ssrContext.modules = new Set())).add(${JSON.stringify(
-        filename
+        hashedFilename
       )})`,
       `  return _sfc_setup ? _sfc_setup(props, ctx) : undefined`,
       `}`

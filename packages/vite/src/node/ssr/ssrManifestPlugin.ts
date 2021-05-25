@@ -1,3 +1,5 @@
+import { relative } from 'path'
+import { createHash } from 'crypto'
 import { ResolvedConfig } from '..'
 import { Plugin } from '../plugin'
 import { chunkToEmittedCssFileMap } from '../plugins/css'
@@ -18,7 +20,12 @@ export function ssrManifestPlugin(config: ResolvedConfig): Plugin {
           // TODO: also include non-CSS assets
           const cssFiles = chunkToEmittedCssFileMap.get(chunk)
           for (const id in chunk.modules) {
-            const mappedChunks = ssrManifest[id] || (ssrManifest[id] = [])
+            const normalizedId = relative(config.root, id)
+            const hashedId = createHash('sha256')
+              .update(normalizedId)
+              .digest('hex')
+            const mappedChunks =
+              ssrManifest[hashedId] || (ssrManifest[hashedId] = [])
             mappedChunks.push(base + chunk.fileName)
             if (cssFiles) {
               cssFiles.forEach((file) => {
