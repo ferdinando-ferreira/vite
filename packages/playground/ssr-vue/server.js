@@ -120,7 +120,12 @@ async function createServer(
         }
         const manifestIdToModule = {}
         vite.moduleGraph.idToModuleMap.forEach((module) => {
-          manifestIdToModule[module.id] = module
+          const { createHash } = require('crypto')
+          const normalizedId = path.relative(vite.config.root, module.id)
+          const hashedId = createHash('sha256')
+            .update(normalizedId)
+            .digest('hex')
+          manifestIdToModule[hashedId] = module
           if (/.css$/.test(module.id)) {
             if (module.transformResult?.code) {
               const found = module.transformResult.code
