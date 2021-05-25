@@ -15,7 +15,7 @@ async function createServer(
     ? fs.readFileSync(resolve('dist/client/index.html'), 'utf-8')
     : ''
 
-  const manifest = isProd
+  const prodManifest = isProd
     ? // @ts-ignore
       require('./dist/client/ssr-manifest.json')
     : {}
@@ -66,7 +66,83 @@ async function createServer(
         render = require('./dist/server/entry-server.js').render
       }
 
-      const [appHtml, preloadLinks] = await render(url, manifest)
+      const [appHtml, modules] = await render(url)
+
+      function renderPreloadLinks(modules, manifest, isProd, idToCode) {
+        let links = ''
+        const seen = new Set()
+        modules.forEach((id) => {
+          const files = manifest[id]
+          if (files) {
+            files.forEach((file) => {
+              if (!seen.has(file)) {
+                seen.add(file)
+                links += isProd
+                  ? renderPreloadLinkProd(file)
+                  : renderPreloadLinkDev(file, idToCode)
+              }
+            })
+          }
+        })
+        return links
+      }
+
+      function renderPreloadLinkProd(file) {
+        if (file.endsWith('.js')) {
+          return `<link rel="modulepreload" crossorigin href="${file}">`
+        } else if (file.endsWith('.css')) {
+          return `<link rel="stylesheet" href="${file}">`
+        } else {
+          // TODO
+          return ''
+        }
+      }
+
+      function renderPreloadLinkDev(file, idToCode) {
+        if (file.endsWith('.css') && idToCode[file]) {
+          return `<style>${idToCode[file]}</style>`
+        } else {
+          return ''
+        }
+      }
+
+      let preloadLinks = ''
+      let idToCode = {}
+      let manifest
+      if (isProd) {
+        manifest = prodManifest
+      } else {
+        function requireFromString(src) {
+          var Module = module.constructor
+          var m = new Module()
+          m._compile(src, '')
+          return m.exports
+        }
+        const manifestIdToModule = {}
+        vite.moduleGraph.idToModuleMap.forEach((module) => {
+          manifestIdToModule[module.id] = module
+          if (/.css$/.test(module.id)) {
+            if (module.transformResult?.code) {
+              const found = module.transformResult.code
+                .split(/\r?\n/)
+                .filter((line) => /^const css/.test(line))
+              if (found) {
+                idToCode[module.id] = requireFromString(
+                  found[0] + '\nmodule.exports = css'
+                )
+              }
+            }
+          }
+        })
+        const devManifest = {}
+        Array.from(modules).forEach((moduleId) => {
+          devManifest[moduleId] = Array.from(
+            manifestIdToModule[moduleId].importedModules
+          ).map((module) => module.id)
+        })
+        manifest = devManifest
+      }
+      preloadLinks = renderPreloadLinks(modules, manifest, isProd, idToCode)
 
       const html = template
         .replace(`<!--preload-links-->`, preloadLinks)
